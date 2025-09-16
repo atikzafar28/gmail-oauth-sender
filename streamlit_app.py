@@ -1,5 +1,7 @@
 import streamlit as st
-import os, mimetypes, base64
+import os
+import mimetypes
+import base64
 from email.message import EmailMessage
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -19,24 +21,25 @@ def gmail_authenticate():
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            
-            # Detect headless/cloud environment
-            if "STREAMLIT_SERVER_PORT" in os.environ:
+
+            # Detect headless / cloud environment
+            if os.environ.get("STREAMLIT_SERVER_PORT"):
                 st.info(
                     "Headless environment detected.\n"
-                    "1. Copy the URL below and open it in your browser.\n"
+                    "1. Copy the URL below into your browser.\n"
                     "2. Log in with your Gmail account and allow access.\n"
-                    "3. Copy the code provided by Google and paste it below."
+                    "3. Copy the verification code and paste it below."
                 )
-                creds = flow.run_console()
+                creds = flow.run_console()  # Uses console flow in headless mode
             else:
-                creds = flow.run_local_server(port=0)
+                # Local environment (Mac)
+                creds = flow.run_local_server(port=0)  # Opens browser automatically
 
+        # Save token for future use
         with open("token.json", "w") as token:
             token.write(creds.to_json())
 
-    service = build("gmail", "v1", credentials=creds)
-    return service
+    return build("gmail", "v1", credentials=creds)
 
 # ---------------- Create Email Message ----------------
 def create_message(sender, to, subject, body_text, file):
