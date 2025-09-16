@@ -1,5 +1,5 @@
 import streamlit as st
-import os, mimetypes, base64, sys
+import os, mimetypes, base64
 from email.message import EmailMessage
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -8,6 +8,7 @@ from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
+# ---------------- Gmail Authentication ----------------
 def gmail_authenticate():
     creds = None
     if os.path.exists("token.json"):
@@ -18,18 +19,26 @@ def gmail_authenticate():
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            # Automatically choose the flow based on environment
-            if "STREAMLIT_SERVER_PORT" in os.environ:  # Cloud / headless
-                st.info("Running in headless mode, follow console URL to authenticate.")
+            
+            # Detect headless/cloud environment
+            if "STREAMLIT_SERVER_PORT" in os.environ:
+                st.info(
+                    "Headless environment detected.\n"
+                    "1. Copy the URL below and open it in your browser.\n"
+                    "2. Log in with your Gmail account and allow access.\n"
+                    "3. Copy the code provided by Google and paste it below."
+                )
                 creds = flow.run_console()
-            else:  # Local
+            else:
                 creds = flow.run_local_server(port=0)
+
         with open("token.json", "w") as token:
             token.write(creds.to_json())
 
-    return build("gmail", "v1", credentials=creds)
+    service = build("gmail", "v1", credentials=creds)
+    return service
 
-
+# ---------------- Create Email Message ----------------
 def create_message(sender, to, subject, body_text, file):
     msg = EmailMessage()
     msg["To"] = to
@@ -48,28 +57,37 @@ def create_message(sender, to, subject, body_text, file):
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     return {"raw": raw}
 
-
+# ---------------- Send Email ----------------
 def send_message(service, message_body):
     sent = service.users().messages().send(userId="me", body=message_body).execute()
     return sent
 
+# ---------------- Streamlit App ----------------
+st.set_page_config(page_title="Gmail OAuth2 Email Sender", layout="centered")
+st.title("📧 Gmail OAuth2 Email Sender")
 
-# ----------------- Streamlit GUI -----------------
-st.title("Gmail OAuth2 Email Sender")
-
+# Authenticate Gmail
 service = gmail_authenticate()
 profile = service.users().getProfile(userId="me").execute()
 sender_email = profile.get("emailAddress", "me")
 
+# User Inputs
 recipient = st.text_input("Recipient Email")
 subject = st.text_input("Subject")
 body = st.text_area("Message")
 uploaded_file = st.file_uploader("Upload a file (optional)", type=["pdf", "jpg", "png", "docx", "txt"])
 
+# Send Button
 if st.button("Send Email"):
     if not recipient or not subject or not body:
-        st.error("Please fill all required fields.")
+        st.error("⚠️ Please fill all required fields.")
     else:
-        message_body = create_message(sender_email, recipient, subject, body, uploaded_file)
-        sent = send_message(service, message_body)
-        st.success(f"Email sent! Message ID: {sent.get('id')}")
+        try:
+            message_body = create_message(sender_email, recipient, subject, body, uploaded_file)
+            sent = send_message(service, message_body)
+            st.success(f"✅ Email sent successfully! Message ID: {sent.get('id')}")
+        except Exception as e:
+            st.error(f"❌ Error sending email: {e}")
+
+st.markdown("---")
+st.markdown("💡 *This app uses Gmail OAuth2. Your credentials remain local and are never pushed to GitHub.*")
